@@ -92,7 +92,46 @@ frappe.ui.Sidebar = class Sidebar {
 					frappe.breadcrumbs.all[current_route_str].module;
 			}
 		}
-		if (this.is_route_in_sidebar(current_item)) {
+		
+		// console.log("current_item", current_item);
+		// Try to find active item first by breadcrumb workspace/module
+		let found_active = false;
+		if (current_item) {
+			found_active = this.is_route_in_sidebar(current_item);
+		}
+		
+		// If no active item found via breadcrumbs, try to match by route (for Link workspaces)
+		if (!found_active) {
+			found_active = this.is_route_in_sidebar(null);
+		}
+		
+		// Additional check: If we're on a list/form page, try to find the Link workspace that points to this doctype
+		if (!found_active && (current_route[0] === "List" || current_route[0] === "Form")) {
+			let doctype_name = current_route[1];
+			const that = this;
+			// Look for Link workspaces that point to this doctype
+			$(".item-anchor").each(function() {
+				let href = $(this).attr("href");
+				if (href) {
+					let clean_href = href.replace(/^[/#]*(?:app\/)?/, '');
+					let href_parts = clean_href.split('/').filter(part => part.length > 0);
+					if (href_parts.length >= 1) {
+						let href_doctype = href_parts[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+						if (href_doctype === doctype_name) {
+							found_active = true;
+							if (that.active_item) that.active_item.removeClass("active-sidebar");
+							that.active_item = $(this).parent();
+							return false; // exit the each loop
+						}
+					}
+				}
+			});
+		}
+
+		// console.log("found_active", found_active);
+		// console.log("this.active_item", this.active_item);
+		
+		if (found_active && this.active_item) {
 			this.active_item.addClass("active-sidebar");
 		}
 		if (this.active_item) {
@@ -138,8 +177,63 @@ frappe.ui.Sidebar = class Sidebar {
 	is_route_in_sidebar(active_module) {
 		let match = false;
 		const that = this;
-		$(".item-anchor").each(function () {
-			if ($(this).attr("title") == active_module) {
+		let current_route = frappe.get_route_str();
+		
+		$(".item-anchor").each(function (index) {
+			let title = $(this).attr("title");
+			let href = $(this).attr("href");
+			let title_match = active_module && title == active_module;
+			let href_match = false;
+			
+			// For Link type workspaces, also check if the current route matches the href
+			if (href) {
+				// Remove leading slash, hash, and /app/ prefix from href for comparison
+				let clean_href = href.replace(/^[/#]*(?:app\/)?/, '');
+				// Remove leading slash from current route for comparison
+				let clean_current_route = current_route.replace(/^\/+/, '');
+				
+				// Split routes by '/' and compare the significant parts
+				let href_parts = clean_href.split('/').filter(part => part.length > 0);
+				let route_parts = clean_current_route.split('/').filter(part => part.length > 0);
+				
+				// For DocType lists, check if the href points to the same doctype
+				if (href_parts.length >= 1 && route_parts.length >= 1) {
+					// Check if first part matches (doctype slug)
+					href_match = href_parts[0] === route_parts[0];
+					
+					// For more specific matching, check if it's a list view
+					if (href_match && href_parts.length >= 3 && route_parts.length >= 3) {
+						// Check if both are pointing to the same view type
+						href_match = href_parts[1] === route_parts[1] && href_parts[2] === route_parts[2];
+					}
+					
+					// Special case: Current route is a list view but href points to base doctype
+					// e.g., current_route: "List/Learning Topic/List" vs href: "learning-topic"
+					if (!href_match && route_parts.length >= 3 && route_parts[0] === "List") {
+						// Check if the doctype name in the route matches the href
+						let route_doctype = route_parts[1].toLowerCase().replace(/\s+/g, '-');
+						href_match = href_parts[0] === route_doctype;
+					}
+					
+					// Special case: Current route is a form view but href points to base doctype
+					// e.g., current_route: "Form/YoungMindsApp Settings/YoungMindsApp Settings" vs href: "youngmindsapp-settings"
+					if (!href_match && route_parts.length >= 3 && route_parts[0] === "Form") {
+						// Check if the doctype name in the route matches the href
+						let route_doctype = route_parts[1].toLowerCase().replace(/\s+/g, '-');
+						href_match = href_parts[0] === route_doctype;
+					}
+					
+					// Special case: Current route is a workspace route but href points to workspace
+					// e.g., current_route: "Workspaces/Youngminds" vs href: "youngminds"
+					if (!href_match && route_parts.length >= 2 && route_parts[0] === "Workspaces") {
+						// Check if the workspace name in the route matches the href
+						let route_workspace = route_parts[1].toLowerCase().replace(/\s+/g, '-');
+						href_match = href_parts[0] === route_workspace;
+					}
+				}
+			}
+			
+			if (title_match || href_match) {
 				match = true;
 				if (that.active_item) that.active_item.removeClass("active-sidebar");
 				that.active_item = $(this).parent();

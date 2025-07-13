@@ -157,9 +157,15 @@ frappe.breadcrumbs = {
 			const doctype_meta = frappe.get_meta(breadcrumbs.doctype);
 			if (doctype_meta?.__workspaces?.length) {
 				breadcrumbs.workspace = doctype_meta.__workspaces[0];
+			} else {
+				// Try to find a workspace that contains this doctype as a link
+				let found_workspace = this.find_workspace_with_doctype(breadcrumbs.doctype);
+				if (found_workspace) {
+					breadcrumbs.workspace = found_workspace;
+				}
 			}
 
-			if (breadcrumbs.module) {
+			if (!breadcrumbs.workspace && breadcrumbs.module) {
 				if (this.module_map[breadcrumbs.module]) {
 					breadcrumbs.module = this.module_map[breadcrumbs.module];
 				}
@@ -176,6 +182,24 @@ frappe.breadcrumbs = {
 				}
 			}
 		}
+	},
+
+	find_workspace_with_doctype(doctype) {
+		// Search through all workspaces to find one that contains this doctype as a link
+		if (!frappe.workspace_list) return null;
+		
+		for (let workspace of frappe.workspace_list) {
+			if (workspace.type === "Link" && workspace.link_type === "DocType" && workspace.link_to === doctype) {
+				return workspace.name;
+			}
+			
+			// Also check if the workspace title matches the doctype (case-insensitive)
+			if (workspace.title.toLowerCase() === doctype.toLowerCase()) {
+				return workspace.name;
+			}
+		}
+		
+		return null;
 	},
 
 	set_list_breadcrumb(breadcrumbs) {
